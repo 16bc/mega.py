@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 class Mega:
     def __init__(self, options=None):
         self.schema = 'https'
-        self.domain = 'mega.co.nz'
+        self.domain = 'mega.nz'  # For generate share links
+        self.domain2 = 'mega.co.nz'  # For api requests
         self.timeout = 160  # max secs to wait for resp from api requests
         self.sid = None
         self.sequence_num = random.randint(0, 0xFFFFFFFF)
@@ -162,7 +163,7 @@ class Mega:
         if not isinstance(data, list):
             data = [data]
 
-        url = f'{self.schema}://g.api.{self.domain}/cs'
+        url = f'{self.schema}://g.api.{self.domain2}/cs'
         response = requests.post(
             url,
             params=params,
@@ -196,7 +197,7 @@ class Mega:
             file_id = re.findall(r'\W\w\w\w\w\w\w\w\w\W', url)[0][1:-1]
             id_index = re.search(file_id, url).end()
             key = url[id_index + 1:]
-            return f'{file_id}!{key}'
+            return f'{file_id}#{key}'
         elif '!' in url:
             # V1 URL structure
             match = re.findall(r'/#!(.*)', url)
@@ -322,7 +323,8 @@ class Mega:
             return files[handle]
         path = Path(filename)
         filename = path.name
-        parent_dir_name = path.parent.name
+        parent_path = path.parent
+        parent_dir_name = str(parent_path) if parent_path.name else ""
         for file in list(files.items()):
             parent_node_id = None
             try:
@@ -336,12 +338,6 @@ class Mega:
                                 == file[1]['p']):
                             continue
                         return file
-                elif (filename and file[1]['a']
-                      and file[1]['a']['n'] == filename):
-                    if (exclude_deleted
-                            and self._trash_folder_node_id == file[1]['p']):
-                        continue
-                    return file
             except TypeError:
                 continue
 
@@ -370,7 +366,7 @@ class Mega:
             decrypted_key = a32_to_base64(
                 decrypt_key(base64_to_a32(file_key), self.master_key))
             return (f'{self.schema}://{self.domain}'
-                    f'/#!{public_handle}!{decrypted_key}')
+                    f'/file/{public_handle}#{decrypted_key}')
         else:
             raise ValueError('''Upload() response required as input,
                             use get_link() for regular file input''')
@@ -387,7 +383,7 @@ class Mega:
                                    "(is this a shared file?)")
             decrypted_key = a32_to_base64(file['key'])
             return (f'{self.schema}://{self.domain}'
-                    f'/#!{public_handle}!{decrypted_key}')
+                    f'/file/{public_handle}#{decrypted_key}')
         else:
             raise ValidationError('File id and key must be present')
 
@@ -408,8 +404,7 @@ class Mega:
                 raise RequestError("Can't get a public link from that file "
                                    "(is this a shared file?)")
             decrypted_key = a32_to_base64(file['shared_folder_key'])
-            return (f'{self.schema}://{self.domain}'
-                    f'/#F!{public_handle}!{decrypted_key}')
+            return (f'{self.schema}://{self.domain}/folder/{public_handle}#{decrypted_key}')
         else:
             raise ValidationError('File id and key must be present')
 
@@ -522,7 +517,7 @@ class Mega:
         """
         Delete a file by its url
         """
-        path = self._parse_url(url).split('!')
+        path = self._parse_url(url).split('#')
         public_handle = path[0]
         file_id = self.get_id_from_public_handle(public_handle)
         return self.move(file_id, 4)
@@ -541,7 +536,7 @@ class Mega:
         """
         Destroy a file by its url
         """
-        path = self._parse_url(url).split('!')
+        path = self._parse_url(url).split('#')
         public_handle = path[0]
         file_id = self.get_id_from_public_handle(public_handle)
         return self.destroy(file_id)
@@ -634,7 +629,7 @@ class Mega:
         """
         Download a file by it's public url
         """
-        path = self._parse_url(url).split('!')
+        path = self._parse_url(url).split('#')
         file_id = path[0]
         file_key = path[1]
         return self._download_file(
@@ -743,6 +738,7 @@ class Mega:
                 raise ValueError('Mismatched mac')
             output_path = Path(dest_path + file_name)
             shutil.move(temp_output_file.name, output_path)
+            temp_output_file.close()
             return output_path
 
     def upload(self, filename, dest=None, dest_filename=None):
@@ -987,14 +983,14 @@ class Mega:
         """
         Get size and name from a public url, dict returned
         """
-        file_handle, file_key = self._parse_url(url).split('!')
+        file_handle, file_key = self._parse_url(url).split('#')
         return self.get_public_file_info(file_handle, file_key)
 
     def import_public_url(self, url, dest_node=None, dest_name=None):
         """
         Import the public url into user account
         """
-        file_handle, file_key = self._parse_url(url).split('!')
+        file_handle, file_key = self._parse_url(url).split('#')
         return self.import_public_file(file_handle,
                                        file_key,
                                        dest_node=dest_node,
