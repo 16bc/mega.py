@@ -324,7 +324,7 @@ class Mega:
         path = Path(filename)
         filename = path.name
         parent_path = path.parent
-        parent_dir_name = str(parent_path) if parent_path.name else ""
+        parent_dir_name = str(parent_path) if parent_path.name and str(parent_path) != '.' else ""
         for file in list(files.items()):
             parent_node_id = None
             try:
@@ -338,6 +338,12 @@ class Mega:
                                 == file[1]['p']):
                             continue
                         return file
+                elif (filename and file[1]['a']
+                      and file[1]['a']['n'] == filename):
+                    if (exclude_deleted
+                            and self._trash_folder_node_id == file[1]['p']):
+                        continue
+                    return file
             except TypeError:
                 continue
 
@@ -578,7 +584,6 @@ class Mega:
             node = nodes[node_id]
         else:
             node = self.find(path)
-
         node_data = self._node_data(node)
         is_file_node = node_data['t'] == 0
         if is_file_node:
